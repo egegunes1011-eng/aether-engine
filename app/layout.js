@@ -1,4 +1,5 @@
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata = {
   title: "AETHER — The Experience Engine",
@@ -8,7 +9,17 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, padding: 0 }}>{children}</body>
+      <body style={{ margin: 0, padding: 0 }}>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
+```
+
+Kaydet (Ctrl+S), Notepad'i kapat. Sonra CMD'de:
+```
+git add .
+git commit -m "add analytics"
+git push
