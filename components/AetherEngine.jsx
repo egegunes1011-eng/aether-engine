@@ -29,15 +29,73 @@ function runEngine(P,E,S,R,a3,ctx,auto){
   const mx=Math.max(...ch),srt=[...ch].sort((a,b)=>b-a),dom=(srt[0]-srt[1])/10;
   const p2=Math.min(10,mx*(.5+dom)*a3n*1.2);
   const depth=p1>=p2?{score:Math.round(p1*10)/10,path:"Cross-Domain"}:{score:Math.round(p2*10)/10,path:"Singular"};
+
+  // ═══ IMPROVED PROMPT GENERATION ═══
   const parts=[];
-  if(E>=7&&R>=7)parts.push("high energy");else if(E>=7&&R<4)parts.push("hypnotic, driving");else if(S>=7&&E<5)parts.push("slow, contemplative");else if(P>=8)parts.push("complex, unpredictable");
-  if(adj.P>=8)parts.push("unexpected beat switches, complex structure");else if(adj.P>=5)parts.push("moderate complexity");else parts.push("simple repetitive patterns");
-  if(adj.E>=8)parts.push("heavy bass, thick texture, immersive");else if(adj.E>=5)parts.push("warm production");else parts.push("light, airy, minimal");
-  if(adj.S>=8)parts.push("deeply emotional, nostalgic, soul-stirring");else if(adj.S>=5)parts.push("emotionally resonant");else parts.push("light-hearted, carefree");
-  if(adj.R>=8)parts.push("anthemic, crowd-friendly, sing-along chorus");else if(adj.R>=5)parts.push("communal feel");else parts.push("introspective, intimate");
-  if(a3>=1.5)parts.push("raw, authentic, genuine emotion");
-  const am={build:"gradual build-up, explosive climax",burst:"sudden explosive peaks",dissolve:"fading, dreamy ending",release:"tension and release",wave:"rhythmic intensity waves",steady:"consistent energy"};
+
+  // GENRE selection based on channel balance
+  if(E>=8&&R>=8) parts.push("electronic dance, EDM, festival anthem");
+  else if(E>=8&&R<4) parts.push("dark techno, industrial, hypnotic electronic");
+  else if(E>=7&&P>=7) parts.push("experimental electronic, glitch, IDM");
+  else if(S>=8&&E<=4) parts.push("ambient, lo-fi, bedroom pop");
+  else if(S>=8&&E>=6) parts.push("post-rock, shoegaze, dream pop");
+  else if(S>=7&&R<=3) parts.push("singer-songwriter, acoustic, folk");
+  else if(P>=8&&R>=7) parts.push("hip-hop, trap, rap");
+  else if(P>=8) parts.push("experimental, art pop, avant-garde");
+  else if(R>=8) parts.push("pop, indie pop, anthemic rock");
+  else if(E>=6&&S>=6) parts.push("alternative rock, indie, neo-soul");
+  else parts.push("cinematic, soundtrack, atmospheric");
+
+  // TEMPO based on Energy + Crowd
+  const avgER=(adj.E+adj.R)/2;
+  if(avgER>=8) parts.push("140+ BPM, fast, driving rhythm");
+  else if(avgER>=6) parts.push("110-130 BPM, mid-tempo groove");
+  else if(avgER>=4) parts.push("80-100 BPM, relaxed pace");
+  else parts.push("60-80 BPM, slow, breathing room");
+
+  // INSTRUMENTATION based on channels
+  if(adj.E>=8) parts.push("heavy 808 bass, sub-bass, distorted synths, punchy drums");
+  else if(adj.E>=6) parts.push("warm synth pads, analog bass, crisp percussion");
+  else if(adj.E>=4) parts.push("soft piano, gentle guitar, light percussion");
+  else parts.push("minimal piano, ambient textures, no drums");
+
+  // VOCALS based on Soul + Crowd
+  if(adj.S>=8&&adj.R<=3) parts.push("intimate whispered vocals, close-mic, vulnerable");
+  else if(adj.S>=8) parts.push("emotional vocals, raw delivery, dynamic range");
+  else if(adj.R>=8) parts.push("powerful vocals, crowd singalong, call-and-response");
+  else if(adj.S<=3&&adj.R<=3) parts.push("instrumental, no vocals");
+  else parts.push("clean vocals, moderate reverb");
+
+  // TEXTURE based on Twist
+  if(adj.P>=8) parts.push("unexpected beat switches, time signature changes, dissonant chords");
+  else if(adj.P>=5) parts.push("subtle harmonic surprises, creative transitions");
+  else parts.push("familiar chord progressions, predictable structure, repetitive hooks");
+
+  // MOOD / EMOTION
+  if(adj.S>=8&&adj.E>=7) parts.push("cathartic, overwhelming emotion, goosebumps");
+  else if(adj.S>=8) parts.push("melancholic, nostalgic, bittersweet, deeply personal");
+  else if(adj.E>=8&&adj.R>=8) parts.push("euphoric, ecstatic, peak energy");
+  else if(adj.E>=7) parts.push("intense, physical, visceral");
+  else if(adj.S>=5) parts.push("reflective, meaningful, emotionally layered");
+  else parts.push("light, playful, easy-going");
+
+  // PRODUCTION STYLE based on authenticity
+  if(a3>=1.8) parts.push("lo-fi production, vinyl crackle, tape saturation, imperfect");
+  else if(a3>=1.3) parts.push("organic production, live instruments feel, warm mix");
+  else if(a3>=0.8) parts.push("polished production, radio-ready mix");
+  else parts.push("hyper-polished, overproduced, commercial sheen");
+
+  // AUTOMATION curve
+  const am={
+    build:"starts quiet and minimal, gradually builds layers, explosive final chorus",
+    burst:"sudden explosive drops, intense peaks with quiet valleys",
+    dissolve:"starts full then slowly strips away, fading dreamy outro, reverb tail",
+    release:"tension building verses, deeply satisfying chorus resolution",
+    wave:"rhythmic waves of intensity, push and pull dynamics",
+    steady:"consistent energy throughout, hypnotic repetition"
+  };
   if(am[auto])parts.push(am[auto]);
+
   return{adj,depth,prompt:parts.join(", "),log};
 }
 
@@ -139,10 +197,11 @@ export default function AetherEngine(){
   const [copied,setCopied]=useState(false);
   const [consoleOpen,setConsoleOpen]=useState(false);
   const [aiError,setAiError]=useState(false);
+  const [stale,setStale]=useState(false);
   const inputRef=useRef(null);
 
   const analyzeWithAI=useCallback(async(text)=>{
-    setPhase("loading");setAiError(false);setNeuroText("");setResult(null);setConsoleOpen(false);
+    setPhase("loading");setAiError(false);setNeuroText("");setResult(null);setConsoleOpen(false);setStale(false);
     try{
       const res=await fetch("/api/analyze",{
         method:"POST",
@@ -165,14 +224,17 @@ export default function AetherEngine(){
 
   const manualGenerate=useCallback(()=>{
     const eng=runEngine(P,E,S,R,a3,ctx,auto);
-    setResult(eng);setNeuroText("");setPhase("result");
+    setResult(eng);setNeuroText("");setPhase("result");setStale(false);
   },[P,E,S,R,a3,ctx,auto]);
+
+  // Slider changes mark result as stale but DON'T remove it
+  const onSliderChange=(setter)=>(v)=>{setter(v);setStale(true);};
 
   const applyPreset=(pr)=>{
     setQuery(pr.label);
     setP(pr.p);setE(pr.e);setS(pr.s);setR(pr.r);setA3(pr.a);setCtx(pr.ctx);setAuto(pr.auto);
     const eng=runEngine(pr.p,pr.e,pr.s,pr.r,pr.a,pr.ctx,pr.auto);
-    setResult(eng);setNeuroText("");setPhase("result");setConsoleOpen(false);
+    setResult(eng);setNeuroText("");setPhase("result");setConsoleOpen(false);setStale(false);
   };
 
   const handleSubmit=()=>{if(query.trim())analyzeWithAI(query.trim());};
@@ -306,8 +368,11 @@ export default function AetherEngine(){
               </div>
             </div>
 
-            <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:14,padding:"16px 20px",marginBottom:12}}>
-              <div style={{fontSize:9,letterSpacing:3,color:"rgba(255,255,255,0.2)",fontFamily:"'IBM Plex Mono',monospace",marginBottom:10}}>GENERATED PROMPT</div>
+            <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:14,padding:"16px 20px",marginBottom:12,opacity:stale?0.5:1,transition:"opacity 0.3s"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontSize:9,letterSpacing:3,color:"rgba(255,255,255,0.2)",fontFamily:"'IBM Plex Mono',monospace"}}>GENERATED PROMPT</div>
+                {stale&&<div style={{fontSize:9,color:"#ffab00",fontFamily:"'IBM Plex Mono',monospace",letterSpacing:1}}>OUTDATED — hit RE-GENERATE</div>}
+              </div>
               <p style={{fontSize:12,lineHeight:1.7,color:"rgba(255,255,255,0.65)",margin:0,fontFamily:"'IBM Plex Mono',monospace"}}>{result.prompt}</p>
             </div>
 
@@ -350,10 +415,10 @@ export default function AetherEngine(){
             {consoleOpen&&(
               <div style={{marginTop:12,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:16,padding:"24px 16px",animation:"fadeUp 0.3s ease"}}>
                 <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:20}}>
-                  <VSlider ch="P" value={P} adjValue={result?.adj?.P} onChange={v=>{setP(v);setResult(null);}} showAdj={!!result}/>
-                  <VSlider ch="E" value={E} adjValue={result?.adj?.E} onChange={v=>{setE(v);setResult(null);}} showAdj={!!result}/>
-                  <VSlider ch="S" value={S} adjValue={result?.adj?.S} onChange={v=>{setS(v);setResult(null);}} showAdj={!!result}/>
-                  <VSlider ch="R" value={R} adjValue={result?.adj?.R} onChange={v=>{setR(v);setResult(null);}} showAdj={!!result}/>
+                  <VSlider ch="P" value={P} adjValue={result?.adj?.P} onChange={onSliderChange(setP)} showAdj={!!result&&!stale}/>
+                  <VSlider ch="E" value={E} adjValue={result?.adj?.E} onChange={onSliderChange(setE)} showAdj={!!result&&!stale}/>
+                  <VSlider ch="S" value={S} adjValue={result?.adj?.S} onChange={onSliderChange(setS)} showAdj={!!result&&!stale}/>
+                  <VSlider ch="R" value={R} adjValue={result?.adj?.R} onChange={onSliderChange(setR)} showAdj={!!result&&!stale}/>
                 </div>
                 <div style={{height:1,background:"rgba(255,255,255,0.04)",marginBottom:16}}/>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end",marginBottom:16}}>
@@ -361,12 +426,12 @@ export default function AetherEngine(){
                     <label style={{fontSize:8,letterSpacing:3,color:"rgba(255,255,255,0.2)",fontFamily:"'IBM Plex Mono',monospace",display:"block",marginBottom:5}}>
                       AUTHENTICITY — <span style={{color:a3>=1.5?"#4ade80":a3>=1?"#ffab00":"#ff5722"}}>{a3.toFixed(1)}</span>
                     </label>
-                    <input type="range" min="0.1" max="2.0" step="0.1" value={a3} onChange={e=>{setA3(parseFloat(e.target.value));setResult(null);}}
+                    <input type="range" min="0.1" max="2.0" step="0.1" value={a3} onChange={e=>{setA3(parseFloat(e.target.value));setStale(true);}}
                       className="hfader" style={{width:"100%",appearance:"none",WebkitAppearance:"none",height:2,borderRadius:1,background:"linear-gradient(to right, #ff5722, #ffab00 50%, #4ade80)",cursor:"pointer",outline:"none"}}/>
                   </div>
                   <div style={{flex:"1 1 120px"}}>
                     <label style={{fontSize:8,letterSpacing:3,color:"rgba(255,255,255,0.2)",fontFamily:"'IBM Plex Mono',monospace",display:"block",marginBottom:5}}>CONTEXT</label>
-                    <select value={ctx} onChange={e=>{setCtx(e.target.value);setResult(null);}} style={{width:"100%",padding:"6px 8px",borderRadius:6,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.7)",fontSize:10,fontFamily:"'IBM Plex Mono',monospace",cursor:"pointer",outline:"none"}}>
+                    <select value={ctx} onChange={e=>{setCtx(e.target.value);setStale(true);}} style={{width:"100%",padding:"6px 8px",borderRadius:6,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.7)",fontSize:10,fontFamily:"'IBM Plex Mono',monospace",cursor:"pointer",outline:"none"}}>
                       <option value="">Unspecified</option>
                       <option value="alone headphones">Alone · Headphones</option>
                       <option value="festival concert">Festival · Concert</option>
@@ -378,7 +443,7 @@ export default function AetherEngine(){
                   </div>
                   <div style={{flex:"1 1 100px"}}>
                     <label style={{fontSize:8,letterSpacing:3,color:"rgba(255,255,255,0.2)",fontFamily:"'IBM Plex Mono',monospace",display:"block",marginBottom:5}}>AUTOMATION</label>
-                    <select value={auto} onChange={e=>{setAuto(e.target.value);setResult(null);}} style={{width:"100%",padding:"6px 8px",borderRadius:6,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.7)",fontSize:10,fontFamily:"'IBM Plex Mono',monospace",cursor:"pointer",outline:"none"}}>
+                    <select value={auto} onChange={e=>{setAuto(e.target.value);setStale(true);}} style={{width:"100%",padding:"6px 8px",borderRadius:6,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.7)",fontSize:10,fontFamily:"'IBM Plex Mono',monospace",cursor:"pointer",outline:"none"}}>
                       <option value="build">Build</option><option value="burst">Burst</option>
                       <option value="dissolve">Dissolve</option><option value="release">Release</option>
                       <option value="wave">Wave</option><option value="steady">Steady</option>
@@ -386,13 +451,16 @@ export default function AetherEngine(){
                   </div>
                 </div>
                 <button onClick={manualGenerate} style={{
-                  width:"100%",padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.08)",
-                  background:"rgba(255,255,255,0.03)",color:"rgba(255,255,255,0.5)",
+                  width:"100%",padding:"11px",borderRadius:10,
+                  border:stale?"1px solid rgba(0,212,255,0.3)":"1px solid rgba(255,255,255,0.08)",
+                  background:stale?"rgba(0,212,255,0.08)":"rgba(255,255,255,0.03)",
+                  color:stale?"#00d4ff":"rgba(255,255,255,0.5)",
                   fontSize:11,fontWeight:600,letterSpacing:3,fontFamily:"'IBM Plex Mono',monospace",
-                  cursor:"pointer",transition:"all 0.2s"
+                  cursor:"pointer",transition:"all 0.2s",
+                  animation:stale?"none":"none"
                 }}
                 onMouseOver={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.15)";e.currentTarget.style.color="#fff";}}
-                onMouseOut={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";e.currentTarget.style.color="rgba(255,255,255,0.5)";}}
+                onMouseOut={e=>{e.currentTarget.style.borderColor=stale?"rgba(0,212,255,0.3)":"rgba(255,255,255,0.08)";e.currentTarget.style.color=stale?"#00d4ff":"rgba(255,255,255,0.5)";}}
                 >RE-GENERATE</button>
                 {result&&result.log.length>0&&(
                   <div style={{marginTop:12}}>
