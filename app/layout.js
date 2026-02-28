@@ -16,10 +16,3 @@ export default function RootLayout({ children }) {
     </html>
   );
 }
-```
-
-Kaydet (Ctrl+S), Notepad'i kapat. Sonra CMD'de:
-```
-git add .
-git commit -m "add analytics"
-git push
